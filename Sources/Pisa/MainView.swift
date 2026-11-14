@@ -557,9 +557,10 @@ struct MeetingView: View {
         if isSaving { return "Сохраняю запись" }
         if isQueued { return "В очереди на расшифровку" }
         if isTranscribing {
-            if state.isReprocessing { return "Расшифровываю заново" }
-            if !state.liveStatus.isEmpty { return state.liveStatus }
-            return finishesRecording ? "Завершаю расшифровку" : "Расшифровываю аудио"
+            if isRecording && !state.liveStatus.isEmpty { return state.liveStatus }
+            if state.liveStatus == "Собираю расшифровку" { return state.liveStatus }
+            let isLive = !state.liveStatus.isEmpty
+            return TranscriptionStatus.title(fraction: isLive ? liveAudioProgress : processingProgress, roundsDown: isLive)
         }
         return "Расшифровка не завершена"
     }

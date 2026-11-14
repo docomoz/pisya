@@ -62,6 +62,9 @@ final class InterfacePreview: NSObject {
             fixture.liveCommittedUntil = 160
         } else if CommandLine.arguments.contains("--processing-preview") {
             fixture.status = .processing
+            if CommandLine.arguments.contains(where: { $0.hasPrefix("--progress-preview=") }) {
+                fixture.segments = []
+            }
         }
         if CommandLine.arguments.contains("--storage-preview") {
             var older = fixture
@@ -127,7 +130,13 @@ final class InterfacePreview: NSObject {
             state.beginRecordingSession(current, automatic: false)
         } else if CommandLine.arguments.contains("--processing-preview") {
             state.processingID = fixture.id
-            state.liveStatus = "Завершаю расшифровку"
+            if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--progress-preview=") }),
+               let fraction = Double(argument.dropFirst("--progress-preview=".count)) {
+                state.phase = "Загружаю модель в память"
+                state.progress = fraction
+            } else {
+                state.liveStatus = "Завершаю расшифровку"
+            }
         }
         if CommandLine.arguments.contains("--queue-preview") {
             state.processingID = UUID()
