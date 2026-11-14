@@ -32,7 +32,7 @@ struct MainView: View {
                 actionTitle: "Расшифровать заново"
             ) { state.enqueue(meeting.id, reprocess: true) }
         }
-        .sheet(item: $state.renameTarget) { meeting in NameEditor(title: "Переименовать запись", initial: meeting.title) { state.rename(meeting, to: $0) } }
+        .sheet(item: $state.renameTarget) { meeting in NameEditor(title: "Переименовать запись", initial: meeting.headingTitle) { state.rename(meeting, to: $0) } }
         .sheet(item: $state.permanentDeleteTarget) { meeting in
             ConfirmationSheet(
                 title: "Удалить запись?",
