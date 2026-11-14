@@ -37,6 +37,10 @@ struct UsageEvent: Codable, Equatable {
         .init(type: "Voice.assigned", parameters: ["remembered": flag(remembered), "all_matching": flag(allMatching)], minutes: nil)
     }
 
+    static func mcpToolCall(_ call: MCPToolCall) -> Self {
+        .init(type: "MCP.toolCalled", parameters: ["tool": call.tool.rawValue, "outcome": call.succeeded ? "success" : "failure"], minutes: nil)
+    }
+
     private static func duration(_ seconds: Double) -> Double? {
         guard seconds.isFinite, seconds >= 0 else { return nil }
         return (min(seconds, 86_400) / 6).rounded() / 10
@@ -84,8 +88,9 @@ struct UsageEventQueue: Codable {
     private(set) var pending: [Item] = []
     private let limit: Int
     init(limit: Int = 200) { self.limit = max(1, limit) }
-    mutating func append(_ event: UsageEvent) {
-        pending.append(Item(id: UUID(), date: Date(), event: event))
+    mutating func append(_ event: UsageEvent, id: UUID = UUID(), date: Date = Date()) {
+        guard !pending.contains(where: { $0.id == id }) else { return }
+        pending.append(Item(id: id, date: date, event: event))
         if pending.count > limit { pending.removeFirst(pending.count - limit) }
     }
     mutating func acknowledge(_ sent: [Item]) {

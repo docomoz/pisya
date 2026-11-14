@@ -4,7 +4,10 @@ import CoreFoundation
 public final class MCPHandler {
     private let library: MeetingLibrary
     private var initialized = false
-    public init(library: MeetingLibrary) { self.library = library }
+    private let onToolSuccess: (MCPToolCall) -> Void
+    public init(library: MeetingLibrary, onToolSuccess: @escaping (MCPToolCall) -> Void = { _ in }) {
+        self.library = library; self.onToolSuccess = onToolSuccess
+    }
 
     public func handle(_ request: [String: Any]) -> [String: Any]? {
         guard let id = request["id"] else { return nil }
@@ -44,6 +47,7 @@ public final class MCPHandler {
         }
         if method == "ping" { return result([:]) }
         guard initialized else { return error(-32002, "Initialize first") }
+        var trackedTool: MCPTrackedTool?
         do {
             guard try library.preferences().mcpEnabled else { return error(-32001, "MCP отключён в настройках Писи") }
             if method == "tools/list" { return result(["tools": Self.definitions]) }
@@ -51,6 +55,7 @@ public final class MCPHandler {
             guard let params = request["params"] as? [String: Any], let name = params["name"] as? String else {
                 throw InvalidArgument("Expected tool name")
             }
+            trackedTool = MCPTrackedTool(rawValue: name)
             guard params["arguments"] == nil || params["arguments"] is [String: Any] else {
                 throw InvalidArgument("arguments must be an object")
             }
@@ -63,11 +68,14 @@ public final class MCPHandler {
             }
             let payload = try call(name, args: args)
             let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            if let tool = trackedTool { onToolSuccess(.init(tool: tool, succeeded: true)) }
             return result(["content": [["type": "text", "text": String(decoding: data, as: UTF8.self)]],
                            "structuredContent": payload, "isError": false])
         } catch let invalid as InvalidArgument {
+            if let tool = trackedTool { onToolSuccess(.init(tool: tool, succeeded: false)) }
             return error(-32602, invalid.message)
         } catch let failure {
+            if let tool = trackedTool { onToolSuccess(.init(tool: tool, succeeded: false)) }
             var cause: NSError? = failure as NSError
             var permissionDenied = false
             while let current = cause {

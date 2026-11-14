@@ -133,6 +133,7 @@ final class PisaDelegate: NSObject, NSApplicationDelegate {
     }
     func connect(_ state: AppState, openMain: @escaping () -> Void) {
         self.state = state
+        Analytics.startMCPTracking(root: state.library.root)
         self.openMain = openMain
         deliverURLs()
         if statusController == nil { statusController = StatusBarController(state: state, openMain: openMain) }

@@ -6,7 +6,10 @@ let home = FileManager.default.homeDirectoryForCurrentUser
 let root = home.appendingPathComponent("Library/Containers/com.docomoz.pisa/Data/Library/Application Support/Pisa")
 do {
     let library = try MeetingLibrary(root: root)
-    let handler = MCPHandler(library: library)
+    let analyticsSpool = MCPAnalyticsSpool(root: root)
+    let handler = MCPHandler(library: library) { call in
+        try? analyticsSpool.record(call.tool, succeeded: call.succeeded)
+    }
     var buffer = Data()
     var chunk = [UInt8](repeating: 0, count: 4096)
     while true {

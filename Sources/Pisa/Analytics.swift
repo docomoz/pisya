@@ -16,6 +16,8 @@ enum Analytics {
     private static var retryTask: Task<Void, Never>?
     private static var retryDelay: UInt64 = 60
     private static let session = URLSession(configuration: .ephemeral)
+    private static var mcpSpool: MCPAnalyticsSpool?
+    private static var mcpTimer: Timer?
 
     private static var isPreview: Bool {
         ProcessInfo.processInfo.environment["PISA_DISABLE_ANALYTICS"] == "1"
@@ -24,6 +26,28 @@ enum Analytics {
             || Bundle.main.object(forInfoDictionaryKey: "PisaSourceLinkPreview") as? Bool == true
     }
     private static var allowed: Bool { !isPreview && !previouslyDisabled }
+    static func startMCPTracking(root: URL) {
+        guard !isPreview, mcpSpool == nil else { return }
+        let spool = MCPAnalyticsSpool(root: root)
+        guard allowed else { try? spool.setEnabled(false); return }
+        do { try spool.setEnabled(true) } catch { return }
+        mcpSpool = spool
+        collectMCPEvents()
+        mcpTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+            Task { @MainActor in collectMCPEvents() }
+        }
+    }
+    private static func collectMCPEvents() {
+        guard allowed, let spool = mcpSpool else { return }
+        // Leave source files in place until the server confirms delivery. The UUID
+        // prevents repeated collection from duplicating the in-memory queue.
+        _ = try? spool.drain { items in
+            for item in items { queue.append(.mcpToolCall(item.call), id: item.id, date: item.date) }
+            persist()
+            return false
+        }
+        flush()
+    }
     static func appLaunched() { send(.appLaunched) }
     static func appActivated() {
         guard allowed else { return }
@@ -100,6 +124,7 @@ enum Analytics {
                 guard allowed else { return }
                 guard error == nil, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { scheduleRetry(); return }
                 retryDelay = 60
+                try? mcpSpool?.acknowledge(Set(batch.map(\.id)))
                 queue.acknowledge(batch); persist(); flush()
             }
         }
