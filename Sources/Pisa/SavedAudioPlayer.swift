@@ -11,6 +11,7 @@ struct SavedAudioPlayer: View {
     @State private var duration: TimeInterval = 0
     @State private var position: TimeInterval = 0
     @State private var isPlaying = false
+    @State private var playbackSpeed: PlaybackSpeed = .normal
     @State private var playbackReported = false
     @State private var peaks: [Float] = []
     @State private var timeObserver: Any?
@@ -36,6 +37,7 @@ struct SavedAudioPlayer: View {
                         .screenHelp(playLabel)
                         skipButton("Назад на 15 секунд", icon: "gobackward.15", seconds: -15)
                         skipButton("Вперёд на 15 секунд", icon: "goforward.15", seconds: 15)
+                        speedSelector
                         Spacer(minLength: PisaDesign.Spacing.inline)
                         HStack(spacing: PisaDesign.Spacing.compact) {
                             screenText(verbatim: recordingTimecode(shownPosition)).foregroundStyle(Color.ink)
@@ -63,6 +65,30 @@ struct SavedAudioPlayer: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime).receive(on: DispatchQueue.main)) { notification in
             if let item, notification.object as? AVPlayerItem === item { position = duration }
+        }
+    }
+
+    private var speedSelector: some View {
+        HStack(spacing: PisaDesign.Spacing.none) {
+            ForEach(PlaybackSpeed.allCases, id: \.self) { speed in
+                Button {
+                    guard speed != playbackSpeed else { return }
+                    playbackSpeed = speed
+                    Analytics.playbackSpeedChanged(speed)
+                    if player.currentItem === item && player.timeControlStatus != .paused {
+                        player.rate = speed.rate
+                    }
+                } label: {
+                    screenText(verbatim: speed.rawValue)
+                        .textStyle(PisaDesign.Typography.detailMedium)
+                        .padding(.horizontal, PisaDesign.Spacing.inline)
+                        .frame(minHeight: PisaDesign.Metrics.smallHeight)
+                        .plainSelection(playbackSpeed == speed)
+                }
+                .shapeAwarePlainButton()
+                .accessibilityLabel("Скорость воспроизведения \(speed.rawValue)")
+                .accessibilityAddTraits(playbackSpeed == speed ? .isSelected : [])
+            }
         }
     }
 
@@ -157,7 +183,7 @@ struct SavedAudioPlayer: View {
         } else {
             state.stopPlayback()
             if position >= duration { seek(to: 0) }
-            player.play()
+            player.playImmediately(atRate: playbackSpeed.rate)
         }
     }
 
@@ -194,6 +220,7 @@ struct SavedAudioPlayer: View {
         item = nil
         position = 0
         isPlaying = false
+        playbackSpeed = .normal
         playbackReported = false
         peaks = []
     }

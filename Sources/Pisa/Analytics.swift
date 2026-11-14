@@ -69,6 +69,7 @@ enum Analytics {
     static func transcriptionFailed(mode: String, cancelled: Bool, reprocess: Bool) { send(.transcriptionFailed(mode: mode, cancelled: cancelled, reprocess: reprocess)) }
 
     static func feature(_ feature: TrackedFeature) { send(.feature(feature)) }
+    static func playbackSpeedChanged(_ speed: PlaybackSpeed) { send(.playbackSpeedChanged(speed)) }
     static func setting(_ setting: TrackedSetting, enabled: Bool) { send(.setting(setting, enabled: enabled)) }
     static func voiceAssigned(remembered: Bool, allMatching: Bool) { send(.voiceAssigned(remembered: remembered, allMatching: allMatching)) }
 

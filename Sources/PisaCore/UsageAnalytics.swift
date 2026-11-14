@@ -1,5 +1,18 @@
 import Foundation
 
+enum PlaybackSpeed: String, CaseIterable {
+    case normal = "1x", oneQuarter = "1.25x", oneHalf = "1.5x", double = "2x"
+
+    var rate: Float {
+        switch self {
+        case .normal: return 1
+        case .oneQuarter: return 1.25
+        case .oneHalf: return 1.5
+        case .double: return 2
+        }
+    }
+}
+
 enum TrackedFeature: String, CaseIterable {
     case meetingMoved = "Library.meetingMoved"
     case folderCreated = "Library.folderCreated"
@@ -26,6 +39,10 @@ struct UsageEvent: Codable, Equatable {
     let type: String
     let parameters: [String: String]
     let minutes: Double?
+
+    static func playbackSpeedChanged(_ speed: PlaybackSpeed) -> Self {
+        .init(type: "Playback.speedChanged", parameters: ["speed": speed.rawValue], minutes: nil)
+    }
 
     static func feature(_ feature: TrackedFeature) -> Self {
         .init(type: feature.rawValue, parameters: [:], minutes: nil)

@@ -2,6 +2,16 @@ import XCTest
 @testable import PisaCore
 
 final class UsageAnalyticsTests: XCTestCase {
+    func testPlaybackSpeedEventUsesOnlyPredefinedValues() {
+        for speed in PlaybackSpeed.allCases {
+            let event = UsageEvent.playbackSpeedChanged(speed)
+            XCTAssertEqual(event.type, "Playback.speedChanged")
+            XCTAssertEqual(event.parameters, ["speed": speed.rawValue])
+            XCTAssertNil(event.minutes)
+        }
+        XCTAssertEqual(PlaybackSpeed.allCases.map(\.rawValue), ["1x", "1.25x", "1.5x", "2x"])
+        XCTAssertEqual(PlaybackSpeed.allCases.map(\.rate), [1, 1.25, 1.5, 2])
+    }
     func testQueueRoundTripPreservesPendingEventsAndAcknowledgesOnlySentItems() throws {
         var queue = UsageEventQueue(limit: 3)
         queue.append(.appLaunched)
