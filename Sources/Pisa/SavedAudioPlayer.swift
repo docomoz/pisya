@@ -26,18 +26,22 @@ struct SavedAudioPlayer: View {
                 VStack(spacing: PisaDesign.Spacing.inline) {
                     timeline
                     HStack(spacing: PisaDesign.Spacing.inline) {
-                        let playLabel = isPlaying ? "Пауза" : "Воспроизвести"
-                        Button(action: togglePlayback) {
-                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .textStyle(PisaDesign.Typography.detailMedium)
-                                .frame(width: PisaDesign.Metrics.labelIconWidth)
+                        HStack(spacing: PisaDesign.Spacing.section) {
+                            HStack(spacing: PisaDesign.Spacing.inline) {
+                                let playLabel = isPlaying ? "Пауза" : "Воспроизвести"
+                                Button(action: togglePlayback) {
+                                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                        .textStyle(PisaDesign.Typography.detailMedium)
+                                        .frame(width: PisaDesign.Metrics.labelIconWidth)
+                                }
+                                .actionButton(size: .small)
+                                .accessibilityLabel(playLabel)
+                                .screenHelp(playLabel)
+                                skipButton("Назад на 15 секунд", icon: "gobackward.15", seconds: -15)
+                                skipButton("Вперёд на 15 секунд", icon: "goforward.15", seconds: 15)
+                            }
+                            speedSelector
                         }
-                        .actionButton(size: .small)
-                        .accessibilityLabel(playLabel)
-                        .screenHelp(playLabel)
-                        skipButton("Назад на 15 секунд", icon: "gobackward.15", seconds: -15)
-                        skipButton("Вперёд на 15 секунд", icon: "goforward.15", seconds: 15)
-                        speedSelector
                         Spacer(minLength: PisaDesign.Spacing.inline)
                         HStack(spacing: PisaDesign.Spacing.compact) {
                             screenText(verbatim: recordingTimecode(shownPosition)).foregroundStyle(Color.ink)
@@ -83,7 +87,8 @@ struct SavedAudioPlayer: View {
                         .textStyle(PisaDesign.Typography.detailMedium)
                         .padding(.horizontal, PisaDesign.Spacing.inline)
                         .frame(minHeight: PisaDesign.Metrics.smallHeight)
-                        .plainSelection(playbackSpeed == speed)
+                        .background(playbackSpeed == speed ? PisaDesign.Colors.secondaryAction : .clear,
+                                    in: RoundedRectangle(cornerRadius: PisaDesign.Metrics.cornerRadius))
                 }
                 .shapeAwarePlainButton()
                 .accessibilityLabel("Скорость воспроизведения \(speed.rawValue)")
