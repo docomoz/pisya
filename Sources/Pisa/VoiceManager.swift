@@ -55,7 +55,7 @@ struct VoiceManager: View {
     private func select(_ segment: TranscriptSegment) {
         showSuggestions = false
         selectedSuggestion = nil
-        name = voiceNameForSelection(currentID: selected, currentName: name, segment: segment)
+        name = voiceNameForSelection(currentSpeaker: sample?.speaker, currentName: name, segment: segment)
         lastChosenName = name
         selected = segment.id
     }

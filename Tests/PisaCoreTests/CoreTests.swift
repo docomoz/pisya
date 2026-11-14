@@ -35,11 +35,14 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(transcriptSearchRanges(in: "Спикер 1", query: "СПИКЕР"), [NSRange(location: 0, length: 6)])
     }
 
-    func testReselectingVoiceSamplePreservesUnappliedName() {
-        let sample = TranscriptSegment(start: 0, end: 2, speaker: "Спикер 1", text: "Текст")
-        XCTAssertEqual(voiceNameForSelection(currentID: sample.id, currentName: "Мария", segment: sample), "Мария")
-        XCTAssertEqual(voiceNameForSelection(currentID: UUID(), currentName: "Мария", segment: sample), "Спикер 1")
-        XCTAssertEqual(voiceNameForSelection(currentID: nil, currentName: "", segment: sample), "Спикер 1")
+    func testVoiceNameDraftFollowsSpeakerAcrossSamples() {
+        let first = TranscriptSegment(start: 0, end: 2, speaker: "Спикер 1", text: "Первый")
+        let second = TranscriptSegment(start: 3, end: 5, speaker: "Спикер 1", text: "Второй")
+        let other = TranscriptSegment(start: 6, end: 8, speaker: "Спикер 2", text: "Другой")
+        XCTAssertEqual(voiceNameForSelection(currentSpeaker: first.speaker, currentName: "Юра Соколов", segment: first), "Юра Соколов")
+        XCTAssertEqual(voiceNameForSelection(currentSpeaker: first.speaker, currentName: "Юра Соколов", segment: second), "Юра Соколов")
+        XCTAssertEqual(voiceNameForSelection(currentSpeaker: first.speaker, currentName: "Юра Соколов", segment: other), "Спикер 2")
+        XCTAssertEqual(voiceNameForSelection(currentSpeaker: nil, currentName: "", segment: first), "Спикер 1")
     }
 
     func testSidebarDurationRoundsUpAndUsesNonbreakingUnits() {

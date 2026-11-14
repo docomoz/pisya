@@ -158,21 +158,20 @@ final class InterfaceSearchRegressionTests: XCTestCase {
 final class InterfaceVoiceDraftRegressionTests: XCTestCase {
     func testReloadedSelectedFragmentRetainsEvenAnEmptyUnsavedName() throws {
         var selected = TranscriptSegment(start: 0, end: 4, speaker: "Голос 1", text: "Тестовая реплика")
-        let selectedID = selected.id
         // A background update/reload can replace the struct while playback reselects its ID.
         selected.speaker = "Анна"
         let reloaded = try JSONDecoder().decode(TranscriptSegment.self, from: JSONEncoder().encode(selected))
         for draft in ["", "  ", "Анна Петрова", "Новое имя 👩🏽‍💻"] {
-            XCTAssertEqual(voiceNameForSelection(currentID: selectedID, currentName: draft, segment: reloaded), draft)
+            XCTAssertEqual(voiceNameForSelection(currentSpeaker: selected.speaker, currentName: draft, segment: reloaded), draft)
         }
     }
 
-    func testChoosingAnotherFragmentOfTheSameSpeakerDoesNotCarryAnUnappliedName() {
+    func testChoosingAnotherFragmentOfTheSameSpeakerRetainsUnappliedName() {
         let first = TranscriptSegment(start: 0, end: 4, speaker: "Голос 1", text: "Первая реплика")
         let second = TranscriptSegment(start: 8, end: 12, speaker: "Голос 1", text: "Другая реплика")
         XCTAssertNotEqual(first.id, second.id)
-        XCTAssertEqual(voiceNameForSelection(currentID: first.id, currentName: "Черновик имени", segment: second),
-                       "Голос 1")
+        XCTAssertEqual(voiceNameForSelection(currentSpeaker: first.speaker, currentName: "Черновик имени", segment: second),
+                       "Черновик имени")
     }
 
     func testRenamingToAnExistingParticipantMergesGroupsAtTheEarliestFragment() throws {
