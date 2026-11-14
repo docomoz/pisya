@@ -52,11 +52,12 @@ final class ModelSetup: ObservableObject {
     }
     func install(onReady: @escaping () -> Void) {
         guard !busy else { return }
+        Analytics.modelInstallStarted()
         let installer: ModelInstaller
         let useCustom = usesCustomModel() && customModel().map(Self.customIsUsable) == true
         installedUsingCustom = useCustom
         do { installer = try self.installer(usingCustom: useCustom) }
-        catch { self.error = error.localizedDescription; phase = .failed; return }
+        catch { Analytics.modelInstallFailed(); self.error = error.localizedDescription; phase = .failed; return }
         error = nil; progress = nil; phase = .downloading
         let token = UUID(); generation = token
         operation = Task { [weak self] in
@@ -71,12 +72,14 @@ final class ModelSetup: ObservableObject {
             }
             do {
                 try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-                guard let self, self.generation == token, !Task.isCancelled else { return }
+                guard let self, self.generation == token else { return }
+                if Task.isCancelled { Analytics.modelInstallCancelled(); self.phase = .available; self.progress = nil; return }
+                Analytics.modelInstallCompleted()
                 onReady(); self.phase = .ready; self.progress = nil
             } catch {
                 guard let self, self.generation == token else { return }
-                if error is CancellationError { self.phase = .available }
-                else { self.phase = .failed; self.error = error.localizedDescription }
+                if error is CancellationError || Task.isCancelled { Analytics.modelInstallCancelled(); self.phase = .available }
+                else { Analytics.modelInstallFailed(); self.phase = .failed; self.error = error.localizedDescription }
                 self.progress = nil
             }
         }

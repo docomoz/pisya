@@ -64,6 +64,28 @@ final class UsageAnalyticsTests: XCTestCase {
         XCTAssertEqual(events[9].parameters["mode"], "other")
     }
 
+    func testFeatureEventsUseOnlyFixedNamesAndValues() {
+        let features = TrackedFeature.allCases.map(UsageEvent.feature)
+        XCTAssertEqual(Set(features.map(\.type)), Set([
+            "Library.meetingMoved", "Library.folderCreated", "Transcript.termsReplaced",
+            "Dictionary.termAdded", "Audio.cleanedUp", "Audio.deleted", "Export.transcript", "Export.audio",
+            "Library.searched", "Playback.segmentStarted", "Playback.recordingStarted", "Transcript.edited"
+        ]))
+        XCTAssertTrue(features.allSatisfy { $0.parameters.isEmpty && $0.minutes == nil })
+        XCTAssertEqual(Set(TrackedSetting.allCases.map(\.rawValue)),
+                       Set(["automatic_recording", "background_transcription", "automatic_export", "mcp"]))
+        for setting in TrackedSetting.allCases {
+            XCTAssertEqual(UsageEvent.setting(setting, enabled: true).type, "Setting.changed")
+            XCTAssertEqual(UsageEvent.setting(setting, enabled: true).parameters,
+                           ["setting": setting.rawValue, "enabled": "yes"])
+            XCTAssertEqual(UsageEvent.setting(setting, enabled: false).parameters,
+                           ["setting": setting.rawValue, "enabled": "no"])
+        }
+        XCTAssertEqual(UsageEvent.voiceAssigned(remembered: true, allMatching: false).type, "Voice.assigned")
+        XCTAssertEqual(UsageEvent.voiceAssigned(remembered: true, allMatching: false).parameters,
+                       ["remembered": "yes", "all_matching": "no"])
+    }
+
     func testDurationsAreFiniteNonnegativeRoundedMinutesAndCapped() {
         let event = { (seconds: Double) in UsageEvent.audioImported(duration: seconds).minutes }
         XCTAssertNil(event(.nan))

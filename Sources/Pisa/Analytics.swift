@@ -34,10 +34,19 @@ enum Analytics {
     }
     static func recordingStarted(automatic: Bool) { send(.recordingStarted(automatic: automatic)) }
     static func recordingSaved(duration: Double, automatic: Bool) { send(.recordingSaved(duration: duration, automatic: automatic)) }
+    static func recordingIssue(_ issue: UsageEvent.RecordingIssue) { send(.recordingIssue(issue)) }
+    static func modelInstallStarted() { send(.modelInstallStarted) }
+    static func modelInstallCompleted() { send(.modelInstallCompleted) }
+    static func modelInstallFailed() { send(.modelInstallFailed) }
+    static func modelInstallCancelled() { send(.modelInstallCancelled) }
     static func audioImported(duration: Double) { send(.audioImported(duration: duration)) }
     static func transcriptionStarted(mode: String, reprocess: Bool) { send(.transcriptionStarted(mode: mode, reprocess: reprocess)) }
     static func transcriptionCompleted(mode: String, reprocess: Bool, duration: Double) { send(.transcriptionCompleted(mode: mode, reprocess: reprocess, duration: duration)) }
     static func transcriptionFailed(mode: String, cancelled: Bool, reprocess: Bool) { send(.transcriptionFailed(mode: mode, cancelled: cancelled, reprocess: reprocess)) }
+
+    static func feature(_ feature: TrackedFeature) { send(.feature(feature)) }
+    static func setting(_ setting: TrackedSetting, enabled: Bool) { send(.setting(setting, enabled: enabled)) }
+    static func voiceAssigned(remembered: Bool, allMatching: Bool) { send(.voiceAssigned(remembered: remembered, allMatching: allMatching)) }
 
     private static func send(_ event: UsageEvent) {
         guard allowed else { return }

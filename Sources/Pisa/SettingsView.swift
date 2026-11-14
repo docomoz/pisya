@@ -59,7 +59,7 @@ struct SettingsView: View {
                     case "MCP":
                         columns {
                         block("Доступ к встречам через MCP", "Локальный сервер даёт доступ только для чтения и работает без сетевого порта") {
-                            screenToggle("Разрешить MCP читать библиотеку", isOn: $state.preferences.mcpEnabled).onChange(of: state.preferences.mcpEnabled) { state.savePreferences() }
+                            screenToggle("Разрешить MCP читать библиотеку", isOn: $state.preferences.mcpEnabled).onChange(of: state.preferences.mcpEnabled) { state.saveMCPSetting() }
                             SupportingText("Подключённый клиент сможет находить реплики с контекстом и читать расшифровки. Ссылки на источники открывают нужный фрагмент в Pisa. Если клиент использует облачную модель, прочитанный текст может уйти к ней. Аудиофайлы и изменение библиотеки через MCP недоступны.")
                         }
                         } right: {

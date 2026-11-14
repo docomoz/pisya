@@ -60,14 +60,34 @@ test('analytics config requests one automatic page view with sanitized URLs', ()
   assert.equal(views.length, 0);
 });
 
-test('analytics sends only fixed action event names', () => {
+test('analytics sends only allowed events and enumerated link values', () => {
   const state = page('G-TEST123');
-  const click = href => state.listeners.click({ target: { closest: () => ({ getAttribute: () => href }) } });
-  click('#install-guide');
-  click('https://github.com/docomoz/pisa');
+  const click = (href, attrs = {}) => state.listeners.click({ target: { closest: () => ({ getAttribute: name => name === 'href' ? href : attrs[name] }) } });
+  for (const location of ['header', 'hero', 'install']) click('#install-guide', { 'data-analytics-location': location });
+  for (const destination of ['source', 'install_guide', 'privacy']) click('https://github.com/docomoz/pisa', { 'data-analytics-destination': destination });
+  click('https://t.me/docomoz');
   state.window.pisaTrack('copy_install_command');
-  assert.deepEqual(Array.from(state.window.dataLayer.filter(args => args[0] === 'event'), args => args[1]),
-    ['install_guide_click', 'github_click', 'copy_install_command']);
+  state.window.pisaTrack('private_event', { text: 'secret' });
+  state.window.pisaTrack('github_click', 'secret');
+  state.window.pisaTrack('install_guide_click', 'secret');
+  const events = state.window.dataLayer.filter(args => args[0] === 'event');
+  assert.deepEqual(Array.from(events, args => args[1]), [
+    'install_guide_click', 'install_guide_click', 'install_guide_click',
+    'github_click', 'github_click', 'github_click', 'contact_click', 'copy_install_command',
+  ]);
+  assert.deepEqual(Array.from(events.slice(0, 3), args => args[2].cta_location), ['header', 'hero', 'install']);
+  assert.deepEqual(Array.from(events.slice(3, 6), args => args[2].github_destination), ['source', 'install_guide', 'privacy']);
+});
+
+test('all tracked page links have an allowed classification', async () => {
+  const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8');
+  const links = [...html.matchAll(/<a\b([^>]*)>/g)].map(match => match[1]);
+  const ctas = links.filter(link => link.includes('href="#install-guide"'));
+  assert.equal(ctas.length, 3);
+  assert.deepEqual(ctas.map(link => link.match(/data-analytics-location="([^"]+)"/)?.[1]), ['header', 'hero', 'install']);
+  const github = links.filter(link => link.includes('href="https://github.com/docomoz/pisa'));
+  assert.equal(github.length, 5);
+  assert.deepEqual(github.map(link => link.match(/data-analytics-destination="([^"]+)"/)?.[1]), ['source', 'source', 'privacy', 'install_guide', 'source']);
 });
 
 test('download proceeds even when the analytics callback never arrives', () => {

@@ -11,6 +11,7 @@ struct SavedAudioPlayer: View {
     @State private var duration: TimeInterval = 0
     @State private var position: TimeInterval = 0
     @State private var isPlaying = false
+    @State private var playbackReported = false
     @State private var peaks: [Float] = []
     @State private var timeObserver: Any?
     @GestureState private var dragPosition: TimeInterval?
@@ -55,6 +56,10 @@ struct SavedAudioPlayer: View {
         .onDisappear(perform: reset)
         .onReceive(player.publisher(for: \.timeControlStatus).receive(on: DispatchQueue.main)) { status in
             isPlaying = item != nil && player.currentItem === item && status != .paused
+            if status == .playing, isPlaying, !playbackReported {
+                playbackReported = true
+                Analytics.feature(.recordingPlayed)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime).receive(on: DispatchQueue.main)) { notification in
             if let item, notification.object as? AVPlayerItem === item { position = duration }
@@ -189,6 +194,7 @@ struct SavedAudioPlayer: View {
         item = nil
         position = 0
         isPlaying = false
+        playbackReported = false
         peaks = []
     }
 }

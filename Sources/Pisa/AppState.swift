@@ -21,6 +21,8 @@ final class AppState: ObservableObject {
     private var termReplacementUndo: [UUID: (before: [UUID: String], after: [UUID: String])] = [:]
     private let searchIndex = LibrarySearchIndex()
     private var searchGeneration = 0
+    private var searchAnalyticsTask: Task<Void, Never>?
+    private var searchReported = false
     private var searchMatches: Set<UUID> = []
     private var selectAfterSearch = false
     @Published private(set) var searchInProgress = false
@@ -35,7 +37,12 @@ final class AppState: ObservableObject {
         }
     }
     @Published var search = "" {
-        didSet { if search != oldValue { refreshSearch() } }
+        didSet {
+            if search != oldValue {
+                refreshSearch()
+                scheduleSearchAnalytics()
+            }
+        }
     }
     @Published var recording = false
     @Published var starting = false
@@ -116,6 +123,20 @@ final class AppState: ObservableObject {
             (showingTrash ? m.deletedAt != nil : m.deletedAt == nil) &&
             (showingTrash || (folderFilter == nil || m.folderID == folderFilter) && (!unfiledOnly || m.folderID == nil)) &&
             (search.isEmpty || searchMatches.contains(m.id))
+        }
+    }
+    private func scheduleSearchAnalytics() {
+        searchAnalyticsTask?.cancel()
+        guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            searchReported = false
+            return
+        }
+        guard !searchReported, !demo else { return }
+        searchAnalyticsTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+            guard let self, !self.searchReported, !self.demo else { return }
+            self.searchReported = true
+            Analytics.feature(.librarySearched)
         }
     }
     private func refreshSearch() {
@@ -229,10 +250,12 @@ final class AppState: ObservableObject {
     }
     func move(_ m: Meeting, to folder: UUID?) {
         guard var latest = meetings.first(where: { $0.id == m.id }), canMove(latest) else { return }
+        let changed = latest.folderID != folder
         latest.folderID = folder
         do {
             try library.save(latest)
             upsert(latest)
+            if changed { Analytics.feature(.meetingMoved) }
             if !filtered.contains(where: { $0.id == selection }) { selectFirstMatching() }
         } catch { message = error.localizedDescription }
     }
@@ -301,6 +324,7 @@ final class AppState: ObservableObject {
         guard !name.isEmpty, !demo else { return nil }
         var updated = folders
         let savedID: UUID
+        let createsFolder = !updated.contains { $0.id == id }
         if let index = updated.firstIndex(where: { $0.id == id }) {
             updated[index].name = name
             if let symbol { updated[index].symbol = symbol }
@@ -313,6 +337,7 @@ final class AppState: ObservableObject {
         do {
             try library.saveFolders(updated)
             folders = updated
+            if createsFolder { Analytics.feature(.folderCreated) }
             return savedID
         } catch {
             message = error.localizedDescription
@@ -379,7 +404,10 @@ final class AppState: ObservableObject {
             selection = filtered.first?.id
         } catch { message = error.localizedDescription }
         modelSetupObservation = modelSetup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
-        capture.onFailure = { [weak self] error in Task { @MainActor in self?.message = error; if self?.recording == true { await self?.stopRecording() } } }
+        capture.onFailure = { [weak self] error in Task { @MainActor in
+            self?.message = error
+            if self?.recording == true { Analytics.recordingIssue(.interrupted); await self?.stopRecording() }
+        } }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in Task { @MainActor in self?.pollCall() } }
         runAudioArchive()
     }
@@ -390,8 +418,22 @@ final class AppState: ObservableObject {
         }
     }
     func savePreferences() { do { try library.savePreferences(preferences) } catch { message = error.localizedDescription } }
-    func setAutomatic(_ enabled: Bool) { preferences.automaticRecording = enabled; detector.reset(); savePreferences() }
-    func setBackgroundTranscription(_ enabled: Bool) { preferences.backgroundTranscription = enabled; savePreferences() }
+    func setAutomatic(_ enabled: Bool) {
+        let changed = preferences.automaticRecording != enabled
+        preferences.automaticRecording = enabled; detector.reset()
+        do { try library.savePreferences(preferences); if changed { Analytics.setting(.automaticRecording, enabled: enabled) } }
+        catch { message = error.localizedDescription }
+    }
+    func setBackgroundTranscription(_ enabled: Bool) {
+        let changed = preferences.usesBackgroundTranscription != enabled
+        preferences.backgroundTranscription = enabled
+        do { try library.savePreferences(preferences); if changed { Analytics.setting(.backgroundTranscription, enabled: enabled) } }
+        catch { message = error.localizedDescription }
+    }
+    func saveMCPSetting() {
+        do { try library.savePreferences(preferences); Analytics.setting(.mcp, enabled: preferences.mcpEnabled) }
+        catch { message = error.localizedDescription }
+    }
     func canUseTurboTranscription(_ id: UUID) -> Bool {
         guard !demo, !preferences.usesQuietProcessing, activeMeeting?.id != id else { return false }
         return isQueued(id) || (processingID == id && meetings.contains { $0.id == id && $0.status == .processing })
@@ -490,6 +532,7 @@ final class AppState: ObservableObject {
             }
             if preferences.usesBackgroundTranscription && canStartLiveTranscription { enqueue(m.id) }
         } catch {
+            Analytics.recordingIssue(.start)
             m.status = .failed; m.error = error.localizedDescription
             if hasAudio(m) { try? library.save(m); upsert(m) }
             else { try? library.discardEmptyDraft(m) }
@@ -521,7 +564,7 @@ final class AppState: ObservableObject {
             guard !result.files.isEmpty else { throw PisaError.message("Звук не получен. Проверьте разрешения и выбранное приложение") }
             try library.save(m); upsert(m)
             Analytics.recordingSaved(duration: m.duration, automatic: recordingStartedAutomatically)
-            if let warning = result.warning { message = warning }
+            if let warning = result.warning { Analytics.recordingIssue(.partial); message = warning }
             if liveTask != nil && processingID == m.id {
                 liveStopped = true
                 livePaused = false
@@ -530,6 +573,7 @@ final class AppState: ObservableObject {
             else if result.warning == nil && modelReady { enqueue(m.id) }
             else if !modelReady { message = "Запись сохранена. Загрузите модели в настройках, чтобы расшифровать её" }
         } catch {
+            Analytics.recordingIssue(.stop)
             if processingID == m.id { liveStopped = true; liveTask?.cancel() }
             m = (try? library.read(m.id)) ?? m
             m.status = .failed; m.error = error.localizedDescription
@@ -966,6 +1010,7 @@ final class AppState: ObservableObject {
     }
     func play(_ segment: TranscriptSegment, in meeting: Meeting) {
         if !startPlayback(segment, in: meeting, toggle: true) { message = "Аудио этого фрагмента недоступно" }
+        else if playingSegmentID == segment.id { Analytics.feature(.segmentPlayed) }
     }
     @discardableResult
     private func startPlayback(_ segment: TranscriptSegment, in meeting: Meeting, toggle: Bool, normalizePreview: Bool = false) -> Bool {
@@ -1093,6 +1138,7 @@ final class AppState: ObservableObject {
                 let profiles = voiceProfilesAdding(example, name: clean)
                 try saveVoiceChanges([(before: latest, after: updated)], profiles: profiles)
                 saved = true
+                Analytics.voiceAssigned(remembered: true, allMatching: allMatching)
             } catch is CancellationError {
                 return
             } catch {
@@ -1100,8 +1146,8 @@ final class AppState: ObservableObject {
                     message = "Имя не сохранено: \(error.localizedDescription)"
                 }
             }
-        } else {
-            update(applyingName(to: m))
+        } else if update(applyingName(to: m)) {
+            Analytics.voiceAssigned(remembered: false, allMatching: allMatching)
         }
     }
     private var speakerEmbeddingModel: URL {
@@ -1174,6 +1220,7 @@ final class AppState: ObservableObject {
         try library.save(meeting)
         termReplacementUndo[meetingID] = (before, after)
         upsert(meeting)
+        Analytics.feature(.termsReplaced)
         exportIfConfigured(meeting)
     }
     func canUndoTermReplacement(meetingID: UUID) -> Bool {
@@ -1203,6 +1250,7 @@ final class AppState: ObservableObject {
         }
         try library.savePreferences(updated)
         preferences = updated
+        Analytics.feature(.dictionaryTermAdded)
     }
     private func preservingAudioFiles(in value: Meeting) -> Meeting {
         var meeting = value
@@ -1216,17 +1264,22 @@ final class AppState: ObservableObject {
         }
         return meeting
     }
-    func update(_ value: Meeting) {
+    @discardableResult
+    func update(_ value: Meeting) -> Bool {
         let meeting = preservingAudioFiles(in: value)
-        guard !demo else { upsert(meeting); return }
-        do { try library.save(meeting); upsert(meeting); if meeting.status == .ready { exportIfConfigured(meeting) } } catch { message = error.localizedDescription }
+        guard !demo else { upsert(meeting); return false }
+        do {
+            try library.save(meeting); upsert(meeting)
+            if meeting.status == .ready { exportIfConfigured(meeting) }
+            return true
+        } catch { message = error.localizedDescription; return false }
     }
     func editSegmentText(_ text: String, from original: TranscriptSegment, meetingID: UUID) {
         guard text != original.text,
               var meeting = meetings.first(where: { $0.id == meetingID }),
               let index = meeting.segments.firstIndex(where: { $0.id == original.id }) else { return }
         meeting.segments[index].text = text
-        update(meeting)
+        if update(meeting) { Analytics.feature(.transcriptEdited) }
     }
     func renameVoice(_ id: UUID, to name: String) throws {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1402,6 +1455,7 @@ final class AppState: ObservableObject {
         updated.exportDisplayPath = folder?.path
         try library.savePreferences(updated)
         preferences = updated
+        Analytics.setting(.automaticExport, enabled: folder != nil)
         refreshExportFolderAccess()
     }
     func refreshExportFolderAccess() {
@@ -1474,6 +1528,7 @@ final class AppState: ObservableObject {
                 result.failedMeetings += 1
             }
         }
+        if result.meetings > 0 { Analytics.feature(.audioCleanedUp) }
         return result
     }
 
@@ -1482,6 +1537,7 @@ final class AppState: ObservableObject {
         let shared = Set(meetings.filter { $0.id != current.id }.flatMap(\.audioFiles))
         do {
             let result = try removeAudio(from: current, names: Set(current.audioFiles), keepingFiles: shared)
+            if result.meeting.audioFiles != current.audioFiles { Analytics.feature(.audioDeleted) }
             if result.failedFiles > 0 {
                 message = "Не всё аудио удалось удалить"
             }
@@ -1509,7 +1565,12 @@ final class AppState: ObservableObject {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "\(meeting.title.replacingOccurrences(of: "/", with: "-" )).md"
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
         panel.isExtensionHidden = false; panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let url = panel.url { do { try MarkdownExporter.render(meeting).write(to: url, atomically: true, encoding: .utf8) } catch { message = error.localizedDescription } }
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try MarkdownExporter.render(meeting).write(to: url, atomically: true, encoding: .utf8)
+                Analytics.feature(.transcriptExported)
+            } catch { message = error.localizedDescription }
+        }
     }
     func canExportAudio(_ meeting: Meeting) -> Bool {
         guard !audioExports.contains(meeting.id), canModify(meeting), let sources = try? MeetingAudioExport.sources(for: meeting, in: library) else { return false }
@@ -1529,6 +1590,7 @@ final class AppState: ObservableObject {
         defer { if granted { url.stopAccessingSecurityScopedResource() } }
         do {
             try await MeetingAudioExport.write(meeting, from: library, to: url)
+            Analytics.feature(.audioExported)
         } catch {
             message = "Не удалось экспортировать аудио: \(error.localizedDescription)"
         }

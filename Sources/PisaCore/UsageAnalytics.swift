@@ -1,9 +1,41 @@
 import Foundation
 
+enum TrackedFeature: String, CaseIterable {
+    case meetingMoved = "Library.meetingMoved"
+    case folderCreated = "Library.folderCreated"
+    case termsReplaced = "Transcript.termsReplaced"
+    case dictionaryTermAdded = "Dictionary.termAdded"
+    case audioCleanedUp = "Audio.cleanedUp"
+    case audioDeleted = "Audio.deleted"
+    case transcriptExported = "Export.transcript"
+    case audioExported = "Export.audio"
+    case librarySearched = "Library.searched"
+    case segmentPlayed = "Playback.segmentStarted"
+    case recordingPlayed = "Playback.recordingStarted"
+    case transcriptEdited = "Transcript.edited"
+}
+
+enum TrackedSetting: String, CaseIterable {
+    case automaticRecording = "automatic_recording"
+    case backgroundTranscription = "background_transcription"
+    case automaticExport = "automatic_export"
+    case mcp = "mcp"
+}
+
 struct UsageEvent: Codable, Equatable {
     let type: String
     let parameters: [String: String]
     let minutes: Double?
+
+    static func feature(_ feature: TrackedFeature) -> Self {
+        .init(type: feature.rawValue, parameters: [:], minutes: nil)
+    }
+    static func setting(_ setting: TrackedSetting, enabled: Bool) -> Self {
+        .init(type: "Setting.changed", parameters: ["setting": setting.rawValue, "enabled": flag(enabled)], minutes: nil)
+    }
+    static func voiceAssigned(remembered: Bool, allMatching: Bool) -> Self {
+        .init(type: "Voice.assigned", parameters: ["remembered": flag(remembered), "all_matching": flag(allMatching)], minutes: nil)
+    }
 
     private static func duration(_ seconds: Double) -> Double? {
         guard seconds.isFinite, seconds >= 0 else { return nil }
@@ -21,6 +53,14 @@ struct UsageEvent: Codable, Equatable {
     static func recordingSaved(duration: Double, automatic: Bool) -> Self {
         .init(type: "Recording.saved", parameters: ["start": automatic ? "automatic" : "manual"], minutes: self.duration(duration))
     }
+    enum RecordingIssue: String { case start, interrupted, stop, partial }
+    static func recordingIssue(_ issue: RecordingIssue) -> Self {
+        .init(type: "Recording.issue", parameters: ["stage": issue.rawValue], minutes: nil)
+    }
+    static let modelInstallStarted = UsageEvent(type: "ModelInstall.started", parameters: [:], minutes: nil)
+    static let modelInstallCompleted = UsageEvent(type: "ModelInstall.completed", parameters: [:], minutes: nil)
+    static let modelInstallFailed = UsageEvent(type: "ModelInstall.failed", parameters: [:], minutes: nil)
+    static let modelInstallCancelled = UsageEvent(type: "ModelInstall.cancelled", parameters: [:], minutes: nil)
     static func audioImported(duration: Double) -> Self {
         .init(type: "Audio.imported", parameters: [:], minutes: self.duration(duration))
     }
