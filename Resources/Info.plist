@@ -32,9 +32,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.255</string>
+	<string>0.4.256</string>
 	<key>CFBundleVersion</key>
-	<string>295</string>
+	<string>296</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSMicrophoneUsageDescription</key>
